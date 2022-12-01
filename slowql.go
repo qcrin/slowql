@@ -119,9 +119,9 @@ func scan(s bufio.Scanner, rawBlocks, servermeta chan []string) {
 	for s.Scan() {
 		line := s.Text()
 		// Drop useless lines
-		if strings.Contains(s.Text(), "SET timestamp") {
-			continue
-		}
+                if strings.Contains(line, "SET timestamp") || len(line) == 0 {
+                        continue
+                }
 
 		// This big if/else statement detects if the curernt line in a header
 		// or a request, and if it belongs to the same bloc or not
