@@ -54,93 +54,110 @@ func (db *Database) ParseBlocks(rawBlocs chan []string) {
 func (db *Database) parseMySQLHeader(line string, q *query.Query) {
 	var err error
 	parts := strings.Split(line, " ")
-
-	for idx, part := range parts {
-		part = strings.ToLower(part)
-
-		if strings.Contains(part, "query_time:") {
-			time := parts[idx+1]
-			q.QueryTime, err = strconv.ParseFloat(time, 64)
-			if err != nil {
-				logrus.Errorf("query_time: error converting %s to time: %s", parts[idx+1], err)
+	func() {
+		defer func() {
+			panic_err := recover()
+			if panic_err != nil {
+                            //logrus.Errorf("Error parsing line ... Skipped")
 			}
+		}()
+		for idx, part := range parts {
+			part = strings.ToLower(part)
 
-		} else if strings.Contains(part, "lock_time:") {
-			time := parts[idx+1]
-			q.LockTime, err = strconv.ParseFloat(time, 64)
-			if err != nil {
-				logrus.Errorf("lock_time: error converting %s to time: %s", parts[idx+1], err)
-			}
+			if strings.Contains(part, "query_time:") {
+				time := parts[idx+1]
+				q.QueryTime, err = strconv.ParseFloat(time, 64)
+				if err != nil {
+					logrus.Errorf("query_time: error converting %s to time: %s", parts[idx+1], err)
+				}
 
-		} else if strings.Contains(part, "time:") {
-			date := parts[idx+1]
-			q.Time, err = time.Parse(time.RFC3339, date)
-			if err != nil {
-				logrus.Errorf("time: error converting %s to time: %s", parts[idx+1], err)
-			}
+			} else if strings.Contains(part, "lock_time:") {
+				time := parts[idx+1]
+				q.LockTime, err = strconv.ParseFloat(time, 64)
+				if err != nil {
+					logrus.Errorf("lock_time: error converting %s to time: %s", parts[idx+1], err)
+				}
 
-		} else if strings.Contains(part, "rows_sent:") {
-			q.RowsSent, err = strconv.Atoi(parts[idx+1])
-			if err != nil {
-				logrus.Errorf("row_sent: error converting %s to int: %s", parts[idx+1], err)
-			}
+			} else if strings.Contains(part, "time:") {
+				const (
+                                    layout56 = "060102 3:04:05"
+                                )
+				if len(parts[idx+1]) > 6 {
+				    date := parts[idx+1]
+				    q.Time, err = time.Parse(time.RFC3339, date)
+				} else {
+				    date := parts[idx+1] + " " +  parts[idx+3]
+				    q.Time, err = time.Parse(layout56, date)
+			        }
+				if err != nil {
+					logrus.Errorf("time: error converting %s to time: %s", parts[idx+1], err)
+				}
 
-		} else if strings.Contains(part, "rows_examined:") {
-			q.RowsExamined, err = strconv.Atoi(parts[idx+1])
-			if err != nil {
-				logrus.Errorf("rows_examined: error converting %s to int: %s", parts[idx+1], err)
-			}
+			} else if strings.Contains(part, "rows_sent:") {
+				q.RowsSent, err = strconv.Atoi(parts[idx+1])
+				if err != nil {
+					logrus.Errorf("row_sent: error converting %s to int: %s", parts[idx+1], err)
+				}
 
-		} else if strings.Contains(part, "rows_affected:") {
-			q.RowsAffected, err = strconv.Atoi(parts[idx+1])
-			if err != nil {
-				logrus.Errorf("rows_affected: error converting %s to int: %s", parts[idx+1], err)
-			}
+			} else if strings.Contains(part, "rows_examined:") {
+				q.RowsExamined, err = strconv.Atoi(parts[idx+1])
+				if err != nil {
+					logrus.Errorf("rows_examined: error converting %s to int: %s", parts[idx+1], err)
+				}
 
-		} else if strings.Contains(part, "id:") {
-			// Some IDs can have multiple spaces, so we try to bruteforce the
-			// number of spaces. I tried implementing a version that keeps in
-			// memory the correct index after the first pass, but it was not
-			// faster that re-calculating it at each pass
-			item := ""
-			for item == "" {
-				idx++
-				item = parts[idx]
-			}
-			q.ID, err = strconv.Atoi(parts[idx])
-			if err != nil {
-				logrus.Errorf("id: error converting %s to int: %s", parts[idx+1], err)
-			}
+			} else if strings.Contains(part, "rows_affected:") {
+				q.RowsAffected, err = strconv.Atoi(parts[idx+1])
+				if err != nil {
+					logrus.Errorf("rows_affected: error converting %s to int: %s", parts[idx+1], err)
+				}
 
-		} else if strings.Contains(part, "user@host:") {
-			items := db.stringInBrackets.FindAllString(line, -1)
-			// We remove first and last bytes of the strings because they are
-			// square brackets
-			q.User = items[0][1 : len(items[0])-1]
-			q.Host = items[1][1 : len(items[1])-1]
+			} else if strings.Contains(part, "id:") {
+				// Some IDs can have multiple spaces, so we try to bruteforce the
+				// number of spaces. I tried implementing a version that keeps in
+				// memory the correct index after the first pass, but it was not
+				// faster that re-calculating it at each pass
+				item := ""
+				for item == "" {
+					idx++
+					item = parts[idx]
+				}
+				q.ID, err = strconv.Atoi(parts[idx])
+				if err != nil {
+					logrus.Errorf("id: error converting %s to int: %s", parts[idx+1], err)
+				}
 
-		} else if strings.Contains(part, "schema:") {
-			q.Schema = parts[idx+1]
+			} else if strings.Contains(part, "user@host:") {
+				items := db.stringInBrackets.FindAllString(line, -1)
+				// We remove first and last bytes of the strings because they are
+				// square brackets
+				q.User = items[0][1 : len(items[0])-1]
+				q.Host = items[1][1 : len(items[1])-1]
 
-		} else if strings.Contains(part, "last_errno:") {
-			q.LastErrNo, err = strconv.Atoi(parts[idx+1])
-			if err != nil {
-				logrus.Errorf("last_errno: error converting %s to int: %s", parts[idx+1], err)
-			}
+			} else if strings.Contains(part, "schema:") {
+				q.Schema = parts[idx+1]
 
-		} else if strings.Contains(part, "killed:") {
-			q.Killed, err = strconv.Atoi(parts[idx+1])
-			if err != nil {
-				logrus.Errorf("killed: error converting %s to int: %s", parts[idx+1], err)
-			}
+			} else if strings.Contains(part, "last_errno:") {
+				q.LastErrNo, err = strconv.Atoi(parts[idx+1])
+				if err != nil {
+					logrus.Errorf("last_errno: error converting %s to int: %s", parts[idx+1], err)
+				}
 
-		} else if strings.Contains(part, "bytes_sent:") {
-			q.BytesSent, err = strconv.Atoi(parts[idx+1])
-			if err != nil {
-				logrus.Errorf("bytes_sent: error converting %s to int: %s", parts[idx+1], err)
+			} else if strings.Contains(part, "killed:") {
+				q.Killed, err = strconv.Atoi(parts[idx+1])
+				if err != nil {
+					logrus.Errorf("killed: error converting %s to int: %s", parts[idx+1], err)
+				}
+
+			} else if strings.Contains(part, "bytes_sent:") {
+				q.BytesSent, err = strconv.Atoi(parts[idx+1])
+				if err != nil {
+					logrus.Errorf("bytes_sent: error converting %s to int: %s", parts[idx+1], err)
+				}
 			}
 		}
-	}
+
+	}()
+
 }
 
 // ParseServerMeta parses server meta information
